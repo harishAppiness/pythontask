@@ -1,10 +1,15 @@
-from django.shortcuts import get_object_or_404, render
+from tkinter import ACTIVE
+from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
+from .responseFormat import message_response
+from .responseMessage import *
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .serializers import StudentSerializer
-from .models import Student
+from .serializers import StudentSerializer, TotalCountStudentSerializer
+from .models import Student, TotalCountStudent
+from .pagination import paginate
+import datetime
 
 # from rest_framework import generics
 
@@ -12,9 +17,9 @@ from .models import Student
 
 @api_view(['GET'])
 def studentList(request):
-    students = Student.objects.all()
-    serializer = StudentSerializer(students, many=True)
-    return Response(serializer.data)
+    students = Student.objects.filter(active=True)
+    data = paginate(students, StudentSerializer, page=1, PAGE_SIZE=10)
+    return Response(data)
 
 @api_view(['GET'])
 def studentDetail(request, pk):
@@ -24,11 +29,27 @@ def studentDetail(request, pk):
 
 @api_view(['POST'])
 def studentCreate(request):
-    serializer = StudentSerializer(data=request.data)
+    email = request.data.get('email',None)
+    name = request.data.get('Name',None)
 
-    if serializer.is_valid():
-        serializer.save()
+    count = get_object_or_404(TotalCountStudent, id=1)
+    count.count=count.count+1
 
+    year= datetime.datetime.now()
+    year=str(year)[2:4]
+    name=name.upper().split(" ",1)[0]
+    # roll = f"{name.split(" ",1)[0]}/{year[:2]}/{str(count)}"
+    roll = (name + "/" + year + "/" + str(count.count)) 
+    if Student.objects.filter(email=email).exists():
+        return Response(message_response(duplicate_entry), status = 400)
+    else:
+        count.save()
+        data=request.data
+        data['Roll']=roll
+        serializer = StudentSerializer(data=data)
+ 
+        if serializer.is_valid():
+            serializer.save()
     return Response(serializer.data)
     
 @api_view(['POST'])
@@ -44,7 +65,9 @@ def studentUpdate(request, pk):
 @api_view(['DELETE'])
 def studentDelete(request, pk):
     student = Student.objects.get(id=pk)
-    student.delete()
+    student.active = False
+    student.save()
+    # student.delete()
 
     return Response('Student is deleted')
 
